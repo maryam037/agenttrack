@@ -1,7 +1,7 @@
 const express = require("express");
 const UserModel = require("../models/User");
-const authenticate = require("../utils/auth/authenticate");
-const authorizeAdmin = require("../utils/auth/authorize");
+const authenticate = require("../utils/auth/authentication");
+const { authorizeAdmin } = require("../utils/auth/authorization");
 const router = express.Router();
 
 // Fetch all users (admin only)

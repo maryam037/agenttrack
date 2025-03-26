@@ -31,26 +31,24 @@ const corsOptions = {
   credentials: true,
   exposedHeaders: ["Authorization"]
 };
-// Add to route middleware
-app.use("/api/analysis", cors(corsOptions), analyticsRoutes);
-const PORT = process.env.PORT || 5000;
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-];
 
 app.use(express.json());
+
 // Mongodb Connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB Connection Error:", err));
+
 // Routes
 app.use("/api/auth", cors(corsOptions), authRoutes);
 app.use("/api/reviews", cors(corsOptions), ReviewsRoutes);
 app.use("/api/users", cors(corsOptions), usersRoutes);
+app.use("/api/analysis", cors(corsOptions), analyticsRoutes);
+
 app.get("/", (req, res) => {
   res.send("Hello Server is Running");
 });
 
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

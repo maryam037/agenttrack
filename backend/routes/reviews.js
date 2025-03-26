@@ -1,8 +1,8 @@
 const express = require("express");
 const ReviewModel = require("../models/Review");
 const { analyzeReview } = require("../utils/ReviewAnalysis/analyzeReview");
-const authenticate = require("../utils/auth/authenticate");
-const authorizeAdmin = require("../utils/auth/authorize");
+const authenticate = require("../utils/auth/authentication");
+const { authorizeAdmin } = require("../utils/auth/authorization");
 const router = express.Router();
 
 // Get all reviews

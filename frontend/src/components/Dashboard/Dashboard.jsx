@@ -82,9 +82,14 @@ const Dashboard = () => {
         }
       });
       console.log('Received locations:', response.data.locations);
-      setLocations(response.data.locations);
+      if (response.data && response.data.locations) {
+        setLocations(response.data.locations);
+      } else {
+        setError('Failed to load locations');
+      }
     } catch (error) {
       console.error('Error fetching locations:', error);
+      setError('Failed to load locations. Please try again later.');
       if (error.response?.status === 401) {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -109,7 +114,7 @@ const Dashboard = () => {
         }
       });
       console.log('Received agents:', response.data.agents);
-      if (response.data.agents && response.data.agents.length > 0) {
+      if (response.data && response.data.agents) {
         setAgents(response.data.agents);
       } else {
         setError('No agents found in the system');
