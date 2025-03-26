@@ -1,263 +1,256 @@
 const express = require("express");
 const ReviewModel = require("../models/Review");
-const UserModel = require("../models/User");
 const authenticate = require("../utils/auth/authentication");
-const { authorizeAdmin } = require("../utils/auth/authorization");
 const router = express.Router();
 
-// Get all unique locations
+// Get unique locations
 router.get("/locations", authenticate, async (req, res) => {
   try {
+    // First get all reviews to check the data
+    const allReviews = await ReviewModel.find({}, 'location');
+    console.log('Total reviews:', allReviews.length);
+    
+    // Get unique locations
     const locations = await ReviewModel.distinct("location");
+    console.log('Unique locations:', locations);
+    
+    // Sort locations alphabetically
+    locations.sort();
+    
     res.json({ locations });
   } catch (error) {
-    console.error("Error fetching locations:", error);
+    console.error('Error in locations endpoint:', error);
     res.status(500).json({ error: "Failed to fetch locations" });
   }
 });
 
-// Get all agents with their performance metrics
+// Get unique agent names
 router.get("/agents", authenticate, async (req, res) => {
   try {
-    const agents = await ReviewModel.aggregate([
-      {
-        $group: {
-          _id: "$agentId",
-          agentName: { $first: "$agentName" },
-          location: { $first: "$location" },
-          totalReviews: { $sum: 1 },
-          averageRating: { $avg: "$rating" },
-          totalComplaints: { $sum: { $size: "$complaints" } },
-          performance: { $avg: { $cond: [{ $eq: ["$tags.performance", "good"] }, 1, 0] } },
-          accuracy: { $avg: { $cond: [{ $eq: ["$tags.accuracy", "good"] }, 1, 0] } },
-          sentiment: { $avg: { $cond: [{ $eq: ["$tags.sentiment", "positive"] }, 1, 0] } }
-        }
-      },
-      {
-        $project: {
-          _id: 1,
-          agentName: 1,
-          location: 1,
-          totalReviews: 1,
-          averageRating: { $round: ["$averageRating", 2] },
-          totalComplaints: 1,
-          performance: { $round: [{ $multiply: ["$performance", 100] }, 2] },
-          accuracy: { $round: [{ $multiply: ["$accuracy", 100] }, 2] },
-          sentiment: { $round: [{ $multiply: ["$sentiment", 100] }, 2] }
-        }
-      }
-    ]);
-
+    // Get unique agent names
+    const agents = await ReviewModel.distinct("agentName");
+    console.log('Unique agents:', agents);
+    
+    // Sort agent names alphabetically
+    agents.sort();
+    
     res.json({ agents });
   } catch (error) {
-    console.error("Error fetching agents:", error);
-    res.status(500).json({ error: "Failed to fetch agents data" });
+    console.error('Error in agents endpoint:', error);
+    res.status(500).json({ error: "Failed to fetch agent names" });
   }
 });
 
-// Get analytics overview (admin only)
-router.get("/overview", authenticate, authorizeAdmin, async (req, res) => {
-  try {
-    const [
-      totalReviews,
-      totalUsers,
-      averageRating,
-      totalComplaints,
-      performanceMetrics
-    ] = await Promise.all([
-      ReviewModel.countDocuments(),
-      UserModel.countDocuments({ role: "user" }),
-      ReviewModel.aggregate([{ $group: { _id: null, avg: { $avg: "$rating" } } }]),
-      ReviewModel.aggregate([{ $group: { _id: null, total: { $sum: { $size: "$complaints" } } } }]),
-      ReviewModel.aggregate([
-        {
-          $group: {
-            _id: null,
-            performance: { $avg: { $cond: [{ $eq: ["$tags.performance", "good"] }, 1, 0] } },
-            accuracy: { $avg: { $cond: [{ $eq: ["$tags.accuracy", "good"] }, 1, 0] } },
-            sentiment: { $avg: { $cond: [{ $eq: ["$tags.sentiment", "positive"] }, 1, 0] } }
-          }
-        }
-      ])
-    ]);
-
-    res.json({
-      totalReviews,
-      totalUsers,
-      averageRating: averageRating[0]?.avg || 0,
-      totalComplaints: totalComplaints[0]?.total || 0,
-      performanceMetrics: {
-        performance: performanceMetrics[0]?.performance * 100 || 0,
-        accuracy: performanceMetrics[0]?.accuracy * 100 || 0,
-        sentiment: performanceMetrics[0]?.sentiment * 100 || 0
-      }
-    });
-  } catch (error) {
-    console.error("Error fetching overview:", error);
-    res.status(500).json({ error: "Failed to fetch overview data" });
-  }
-});
-
-// Get dashboard data with filters
-router.get("/dashboard", authenticate, async (req, res) => {
-  try {
-    const { location, agentName, rating, sentiment } = req.query;
-    const query = {};
-    
-    if (location) query.location = location;
-    if (agentName) query.agentName = agentName;
-    if (rating) query.rating = parseInt(rating);
-    if (sentiment) query["tags.sentiment"] = sentiment;
-
-    const [
-      totalReviews,
-      averageRating,
-      totalComplaints,
-      performanceMetrics,
-      reviewsByLocation,
-      sentimentDistribution,
-      performanceStats
-    ] = await Promise.all([
-      ReviewModel.countDocuments(query),
-      ReviewModel.aggregate([
-        { $match: query },
-        { $group: { _id: null, avg: { $avg: "$rating" } } }
-      ]),
-      ReviewModel.aggregate([
-        { $match: query },
-        { $group: { _id: null, total: { $sum: { $size: "$complaints" } } } }
-      ]),
-      ReviewModel.aggregate([
-        { $match: query },
-        {
-          $group: {
-            _id: null,
-            performance: { $avg: { $cond: [{ $eq: ["$tags.performance", "good"] }, 1, 0] } },
-            accuracy: { $avg: { $cond: [{ $eq: ["$tags.accuracy", "good"] }, 1, 0] } },
-            sentiment: { $avg: { $cond: [{ $eq: ["$tags.sentiment", "positive"] }, 1, 0] } }
-          }
-        }
-      ]),
-      ReviewModel.aggregate([
-        { $match: query },
-        {
-          $group: {
-            _id: "$location",
-            count: { $sum: 1 },
-            avgRating: { $avg: "$rating" }
-          }
-        },
-        { $project: { location: "$_id", count: 1, avgRating: { $round: ["$avgRating", 2] } } }
-      ]),
-      ReviewModel.aggregate([
-        { $match: query },
-        {
-          $group: {
-            _id: "$tags.sentiment",
-            count: { $sum: 1 }
-          }
-        }
-      ]),
-      ReviewModel.aggregate([
-        { $match: query },
-        {
-          $group: {
-            _id: "$tags.performance",
-            count: { $sum: 1 }
-          }
-        }
-      ])
-    ]);
-
-    res.json({
-      totalReviews,
-      averageRating: averageRating[0]?.avg || 0,
-      totalComplaints: totalComplaints[0]?.total || 0,
-      performanceMetrics: {
-        performance: performanceMetrics[0]?.performance * 100 || 0,
-        accuracy: performanceMetrics[0]?.accuracy * 100 || 0,
-        sentiment: performanceMetrics[0]?.sentiment * 100 || 0
-      },
-      reviewsByLocation,
-      sentimentDistribution: sentimentDistribution || [],
-      performanceStats: performanceStats || []
-    });
-  } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-    res.status(500).json({ error: "Failed to fetch dashboard data" });
-  }
-});
-
-// Get location ratings
+// Add new endpoints for specific metrics
 router.get("/location-ratings", authenticate, async (req, res) => {
   try {
-    const locationRatings = await ReviewModel.aggregate([
-      {
-        $group: {
-          _id: "$location",
-          count: { $sum: 1 },
-          avgRating: { $avg: "$rating" },
-          totalComplaints: { $sum: { $size: "$complaints" } }
-        }
-      },
-      {
-        $project: {
-          location: "$_id",
-          count: 1,
-          avgRating: { $round: ["$avgRating", 2] },
-          totalComplaints: 1
-        }
-      }
+    const results = await ReviewModel.aggregate([
+      { $group: { 
+        _id: "$location", 
+        avgRating: { $avg: "$rating" },
+        count: { $sum: 1 }
+      }},
+      { $sort: { avgRating: -1 } }
     ]);
-
-    res.json(locationRatings);
+    res.json(results);
   } catch (error) {
-    console.error("Error fetching location ratings:", error);
     res.status(500).json({ error: "Failed to fetch location ratings" });
   }
 });
 
-// Get agent performance
 router.get("/agent-performance", authenticate, async (req, res) => {
   try {
-    const agentPerformance = await ReviewModel.aggregate([
-      {
-        $group: {
+    const { top = 10, bottom = 10 } = req.query;
+    
+    // Calculate performance scores with weighted factors
+    const results = await ReviewModel.aggregate([
+      // First, group by agent
+      { 
+        $group: { 
           _id: "$agentId",
           agentName: { $first: "$agentName" },
-          location: { $first: "$location" },
-          totalReviews: { $sum: 1 },
-          averageRating: { $avg: "$rating" },
-          performance: { $avg: { $cond: [{ $eq: ["$tags.performance", "good"] }, 1, 0] } },
-          accuracy: { $avg: { $cond: [{ $eq: ["$tags.accuracy", "good"] }, 1, 0] } },
-          sentiment: { $avg: { $cond: [{ $eq: ["$tags.sentiment", "positive"] }, 1, 0] } }
+          avgRating: { $avg: "$rating" },
+          reviewCount: { $sum: 1 },
+          // Calculate recent average (last 30 days)
+          recentReviews: {
+            $push: {
+              rating: "$rating",
+              date: "$date"
+            }
+          }
         }
       },
+      // Add performance score calculation
+      {
+        $addFields: {
+          // Weight recent reviews more heavily
+          recentAvgRating: {
+            $avg: {
+              $filter: {
+                input: "$recentReviews",
+                as: "review",
+                cond: {
+                  $gte: [
+                    "$$review.date",
+                    { $subtract: [new Date(), 1000 * 60 * 60 * 24 * 30] } // last 30 days
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          // Calculate weighted performance score
+          performanceScore: {
+            $multiply: [
+              // Base average rating (40% weight)
+              { $multiply: ["$avgRating", 0.4] },
+              // Recent performance (40% weight)
+              { $multiply: [{ $ifNull: ["$recentAvgRating", "$avgRating"] }, 0.4] },
+              // Review count factor (20% weight) - normalized between 0 and 1
+              { 
+                $add: [
+                  0.2,
+                  { 
+                    $multiply: [
+                      0.8,
+                      { 
+                        $min: [
+                          1,
+                          { $divide: ["$reviewCount", 100] } // normalize review count
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      // Sort by performance score
+      { $sort: { performanceScore: -1 } },
+      // Project only needed fields
       {
         $project: {
           _id: 1,
           agentName: 1,
-          location: 1,
-          totalReviews: 1,
-          averageRating: { $round: ["$averageRating", 2] },
-          performance: { $round: [{ $multiply: ["$performance", 100] }, 2] },
-          accuracy: { $round: [{ $multiply: ["$accuracy", 100] }, 2] },
-          sentiment: { $round: [{ $multiply: ["$sentiment", 100] }, 2] }
+          avgRating: 1,
+          reviewCount: 1,
+          recentAvgRating: 1,
+          performanceScore: 1
         }
-      },
-      { $sort: { averageRating: -1 } }
+      }
     ]);
-
-    const topAgents = agentPerformance.slice(0, 5);
-    const bottomAgents = agentPerformance.slice(-5).reverse();
-
+    
     res.json({
-      top: topAgents,
-      bottom: bottomAgents
+      top: results.slice(0, parseInt(top)),
+      bottom: results.slice(-parseInt(bottom))
     });
   } catch (error) {
-    console.error("Error fetching agent performance:", error);
+    console.error('Error in agent-performance endpoint:', error);
     res.status(500).json({ error: "Failed to fetch agent performance" });
+  }
+});
+
+// Dashboard metrics
+router.get("/dashboard", authenticate, async (req, res) => {
+  try {
+    const { location, agentName, rating, sentiment } = req.query;
+    
+    // Build the match stage for filtering
+    const matchStage = {};
+    if (location) matchStage.location = location;
+    if (agentName) matchStage.agentName = agentName;
+    if (rating) matchStage.rating = parseInt(rating);
+    if (sentiment) matchStage['tags.sentiment'] = sentiment;
+
+    const [
+      totalReviews,
+      averageRating,
+      sentimentDistribution,
+      complaintStats,
+      performanceStats
+    ] = await Promise.all([
+      ReviewModel.countDocuments(matchStage),
+      ReviewModel.aggregate([
+        { $match: matchStage },
+        { $group: { _id: null, avg: { $avg: "$rating" } } }
+      ]),
+      ReviewModel.aggregate([
+        { $match: matchStage },
+        { $group: { _id: "$tags.sentiment", count: { $sum: 1 } } }
+      ]),
+      ReviewModel.aggregate([
+        { $match: matchStage },
+        { $unwind: "$complaints" },
+        { $group: { _id: "$complaints", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 }
+      ]),
+      ReviewModel.aggregate([
+        { $match: matchStage },
+        { $group: { _id: "$tags.performance", count: { $sum: 1 } } }
+      ])
+    ]);
+
+    res.json({
+      totalReviews,
+      averageRating: averageRating[0]?.avg || 0,
+      sentimentDistribution,
+      complaintStats,
+      performanceStats
+    });
+  } catch (error) {
+    console.error('Error in dashboard endpoint:', error);
+    res.status(500).json({ error: "Failed to fetch analytics" });
+  }
+});
+
+// Get orders by price range
+router.get("/orders-by-price", authenticate, async (req, res) => {
+  try {
+    const results = await ReviewModel.aggregate([
+      {
+        $bucket: {
+          groupBy: "$orderPrice",
+          boundaries: [0, 500, 1000, 1500, 2000, 2500, 3000],
+          default: "3000+",
+          output: {
+            count: { $sum: 1 },
+            avgRating: { $avg: "$rating" }
+          }
+        }
+      },
+      {
+        $project: {
+          priceRange: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$_id", "3000+"] }, then: "₹3000+" },
+                { case: { $eq: ["$_id", 0] }, then: "₹0-500" },
+                { case: { $eq: ["$_id", 500] }, then: "₹500-1000" },
+                { case: { $eq: ["$_id", 1000] }, then: "₹1000-1500" },
+                { case: { $eq: ["$_id", 1500] }, then: "₹1500-2000" },
+                { case: { $eq: ["$_id", 2000] }, then: "₹2000-2500" },
+                { case: { $eq: ["$_id", 2500] }, then: "₹2500-3000" }
+              ],
+              default: "Unknown"
+            }
+          },
+          count: 1,
+          avgRating: 1
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+    
+    res.json(results);
+  } catch (error) {
+    console.error('Error in orders-by-price endpoint:', error);
+    res.status(500).json({ error: "Failed to fetch orders by price range" });
   }
 });
 
