@@ -23,8 +23,20 @@ const Signup = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      // Sign up the user
       await axios.post('http://localhost:5000/api/auth/signup', formData);
-      navigate('/login');
+      
+      // Automatically log in after signup
+      const loginData = {
+        email: formData.email,
+        password: formData.password
+      };
+      const loginResponse = await axios.post('http://localhost:5000/api/auth/login', loginData);
+      localStorage.setItem('token', loginResponse.data.token);
+      localStorage.setItem('user', JSON.stringify(loginResponse.data.user));
+      
+      // Redirect to dashboard
+      navigate('/dashboard');
     } catch (error) {
       setError(error.response?.data?.error || 'Signup failed. Please try again.');
     }
