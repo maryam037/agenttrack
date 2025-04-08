@@ -18,7 +18,7 @@ router.get("/getreviews", authenticate, async (req, res) => {
     if (sentiment) query["tags.sentiment"] = sentiment;
 
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
+    const limit = parseInt(req.query.limit) || 5000;
     const skip = (page - 1) * limit;
 
     const [reviews, total] = await Promise.all([
@@ -53,7 +53,11 @@ router.post("/submit-reviews", authenticate, async (req, res) => {
       orderPrice,
       discountApplied,
       customerId,
+      orderType, // New field
+      customerServiceRating, // New field
+      orderAccuracy, // New field
     } = req.body;
+
     
     if (!agentId) {
       return res.status(400).json({ error: "agentId is required" });
@@ -71,6 +75,10 @@ router.post("/submit-reviews", authenticate, async (req, res) => {
       discountApplied,
       customerId,
       tags,
+      orderType, // New field
+      customerServiceRating, // New field
+      orderAccuracy, // New field
+
       complaints,
     });
 

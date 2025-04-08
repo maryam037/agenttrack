@@ -10,6 +10,21 @@ const reviewSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  orderType: {
+    type: String,
+    required: true,
+  },
+  customerServiceRating: {
+    type: Number,
+    required: true,
+    min: 1,
+    max: 5,
+  },
+  orderAccuracy: {
+    type: String,
+    enum: ["Correct", "Incorrect"],
+    default: "Correct",
+  },
   agentId: {
     type: String,
     required: true,
